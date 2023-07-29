@@ -32,4 +32,5 @@ jobs:
         
     - name: Run Tests
       run: |
+        CD server
         python manage.py test
