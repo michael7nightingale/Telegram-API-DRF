@@ -13,6 +13,7 @@ def get_token():
         url="http://localhost:8000/api/v1/auth/token/login/",
         json=user_data
     )
+    print(123, response.content)
     token = response.json()['auth_token']
     return token
 
@@ -28,21 +29,8 @@ url = "ws://localhost:8000/chats/"
 ws = connect(url + query_string)
 
 ws.send(json.dumps({"action": "list", "request_id": "123019380192831903"}))
-data = ws.recv()
-print(data)
 
-
-ws.send(json.dumps(
-    {
-        "action": "create",
-        "request_id": "123019380192831903",
-        "account_id": "2",
-        "message": {
-            "text": "Heelo, 2"
-        }
-    }
-))
 data = ws.recv()
 print(data)
-data = ws.recv()
-print(data)
+# data = ws.recv()
+# print(data)
