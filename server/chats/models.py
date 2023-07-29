@@ -4,6 +4,28 @@ from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelatio
 
 
 class ChatManager(models.Manager):
+    pass
+
+    def get(self, *args, **kwargs):
+        return (
+            super()
+            .prefetch_related("messages", "members", "messages__account")
+            .get(*args, **kwargs)
+        )
+
+    def filter(self, **kwargs):
+        return (
+            super()
+            .prefetch_related("messages", "members", "messages__account")
+            .filter(**kwargs)
+        )
+
+    def all(self):
+        return (
+            super()
+            .prefetch_related("messages", "members", "messages__account")
+            .all()
+        )
 
     def create_chat(self, members: list):
         chat = Chat()
@@ -61,6 +83,31 @@ class Group(models.Model):
     objects = ChatManager()
 
 
+class MessageManager(models.Manager):
+    # def get(self, *args, **kwargs):
+    #     return (
+    #         super()
+    #         .select_related("account")
+    #         .get(*args, **kwargs)
+    #     )
+    #
+    # def filter(self, **kwargs):
+    #     return (
+    #         super()
+    #         .select_related("account")
+    #         .filter(**kwargs)
+    #     )
+    #
+    # def all(self):
+    #     return (
+    #         super()
+    #         .select_related("account")
+    #         .all()
+    #     )
+
+    pass
+
+
 class Message(models.Model):
     content_object = GenericForeignKey(ct_field="content_type", fk_field="id")
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -77,7 +124,7 @@ class Message(models.Model):
     time_send = models.DateTimeField("Time send", auto_created=True, auto_now=True)
     time_update = models.DateTimeField("Time update", null=True, auto_now_add=True)
 
-    objects = models.Manager()
+    objects = MessageManager()
 
     def __str__(self):
         return self.text

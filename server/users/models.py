@@ -44,6 +44,27 @@ class AccountManager(UserManager):
         user.save(using=self._db)
         return user
 
+    # def get(self, *args, **kwargs):
+    #     return (
+    #         super()
+    #         .prefetch_related("chats")
+    #         .get(*args, **kwargs)
+    #     )
+    #
+    # def filter(self, **kwargs):
+    #     return (
+    #         super()
+    #         .prefetch_related("chats")
+    #         .filter(**kwargs)
+    #     )
+    #
+    # def all(self):
+    #     return (
+    #         super()
+    #         .prefetch_related("chats")
+    #         .all()
+    #     )
+
 
 class Account(AbstractUser):
     email = None

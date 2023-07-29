@@ -10,7 +10,7 @@ from asgiref.sync import sync_to_async
 from users.models import Account
 from .serializers import (
     ChatListSerializer, ChatCreateSerializer, ChatDetailSerializer,
-    MessageDetailSerializer, MessageCreateSerializer, MessageListSerializer
+    MessageDetailSerializer, MessageCreateSerializer,
 )
 from .models import Chat
 
@@ -92,24 +92,25 @@ class ChatConsumer(ObserverModelInstanceMixin,
             data = {
                     "detail": "Other user required",
             }
-        if account_id is None:
+        elif account_id is None:
             data = {
                     "detail": "account id is required"
             }
-        try:
-            account = await Account.objects.aget(pk=account_id)
-        except Account.DoesNotExist:
-            data = {
-                    "detail": "Account is not found"
-            }
         else:
-            chat = await self.save_serializer(serializer, members=[self.account, account])
-            last_message_serializer = await self.get_serializer(
-                action_kwargs={"action": "message_detail"},
-                instance=chat.last_message
-            )
-            await self.notify_users(chat, await self.get_serializer_data(last_message_serializer))
-            data = {"message": "chat created"}
+            try:
+                account = await Account.objects.aget(pk=account_id)
+            except Account.DoesNotExist:
+                data = {
+                        "detail": "Account is not found"
+                }
+            else:
+                chat = await self.save_serializer(serializer, members=[self.account, account])
+                last_message_serializer = await self.get_serializer(
+                    action_kwargs={"action": "message_detail"},
+                    instance=chat.last_message
+                )
+                await self.notify_users(chat, await self.get_serializer_data(last_message_serializer))
+                data = {"message": "chat created"}
         await self.send_json(data)
 
     @database_sync_to_async
