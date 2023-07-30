@@ -10,10 +10,10 @@ from asgiref.sync import sync_to_async
 from users.models import Account
 from .serializers import (
     ChatListSerializer, ChatCreateSerializer, ChatDetailSerializer,
-    GroupListSerializer, GroupCreateSerializer, GroupDetailSerializer,
-    MessageDetailSerializer, MessageCreateSerializer,
+    GroupListSerializer, GroupCreateSerializer, GroupDetailSerializer, GroupUpdateSerializer,
+    MessageDetailSerializer, MessageCreateSerializer, MessageUpdateSerializer
 )
-from .models import Chat, get_messenger_object
+from .models import Chat, get_messenger_object, Group, Message
 
 
 class RequestImitator:
@@ -33,8 +33,11 @@ class ChatConsumer(ObserverModelInstanceMixin,
         "group_create": GroupCreateSerializer,
         "group_list": GroupListSerializer,
         "group_detail": GroupDetailSerializer,
+        "group_update": GroupUpdateSerializer,
         "send_message": MessageCreateSerializer,
-        "message_detail": MessageDetailSerializer
+        "message_detail": MessageDetailSerializer,
+        "message_update": MessageUpdateSerializer,
+
     }
 
     @database_sync_to_async
@@ -52,6 +55,10 @@ class ChatConsumer(ObserverModelInstanceMixin,
     @database_sync_to_async
     def save_serializer(self, serializer: Serializer, **kwargs):
         return serializer.save(**kwargs)
+
+    @database_sync_to_async
+    def update_serializer(self, serializer: Serializer, *args, **kwargs):
+        return serializer.update(*args, **kwargs)
 
     async def websocket_connect(self, message):
         try:
@@ -136,6 +143,55 @@ class ChatConsumer(ObserverModelInstanceMixin,
                 data=await self.get_serializer_data(group_detail_serializer)
             )
 
+    @action()
+    async def group_update(self, **kwargs):
+        action_kwargs = self.prepare_data(**kwargs)
+        serializer = await self.get_serializer(
+            action_kwargs=action_kwargs,
+            data=kwargs,
+            context={"request": RequestImitator(self.account)}
+        )
+        serializer.is_valid(raise_exception=True)
+        group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('id'))
+        group = await self.update_serializer(serializer, instance=group)
+        group_detail_serializer = await self.get_serializer(
+            action_kwargs={
+                "request_id": action_kwargs['request_id'],
+                "action": "group_detail"
+            },
+            instance=group
+        )
+        await self.notify_accounts_by_chat_or_group(
+            chat_or_group=group,
+            data=await self.get_serializer_data(group_detail_serializer)
+        )
+
+    @action()
+    async def message_update(self, **kwargs):
+        action_kwargs = self.prepare_data(**kwargs)
+        serializer = await self.get_serializer(
+            action_kwargs=action_kwargs,
+            data=kwargs,
+            context={"request": RequestImitator(self.account)}
+        )
+        serializer.is_valid(raise_exception=True)
+        message = await sync_to_async(Message.objects.get)(id=serializer.validated_data.get('id'))
+        if message.account != self.account:
+            await self.send_json({"detail": "You are not message sender."})
+        else:
+            message = await self.update_serializer(serializer, instance=message)
+            message_detail_serializer = await self.get_serializer(
+                action_kwargs={
+                    "request_id": action_kwargs['request_id'],
+                    "action": "message_detail"
+                },
+                instance=message
+            )
+            await self.notify_accounts_by_chat_or_group(
+                chat_or_group=message.content_object,
+                data=await self.get_serializer_data(message_detail_serializer)
+            )
+
     @classmethod
     def prepare_data(cls, **kwargs) -> dict:
         action_kwargs = {
@@ -147,7 +203,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
         return action_kwargs
 
     @action()
-    async def send_message(self, **kwargs):
+    async def message_send(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
         create_serializer = await self.get_serializer(
             action_kwargs=action_kwargs,

@@ -57,7 +57,7 @@ def create_chat():
 
 def send_chat_message():
     data = {
-        "action": "send_message",
+        "action": "message_send",
         "request_id": "123019380192831903",
         "text": "I am 123 this",
         "medias": [
@@ -87,4 +87,31 @@ def create_group():
     print(data)
 
 
-create_group()
+def update_message():
+    data = {
+        "action": "message_update",
+        "request_id": "123019380112392831903",
+        "text": "Updated one",
+        "id": "1"
+    }
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+def update_group():
+    data = {
+        "action": "group_update",
+        "request_id": "123019380112392831903",
+        "title": "Updated tiotle c #",
+        "id": "1"
+    }
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+if __name__ == "__main__":
+    # create_group()
+    update_group()
+    pass
