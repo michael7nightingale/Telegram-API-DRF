@@ -2,7 +2,7 @@ from django.core.files.base import ContentFile
 from rest_framework import serializers
 from uuid import uuid4
 
-from .models import Chat, Message, MessageMedia, Group, message_types_models, message_types_choices
+from .models import Chat, Message, MessageMedia, Group, get_messenger_object, message_types_choices
 from users.serializers import AccountDetailSerializer
 
 
@@ -26,10 +26,11 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 
     def save(self, **kwargs):
         kwargs.update(self.validated_data)
-        content_object_model = message_types_models[kwargs['type']]
-        content_object_id = kwargs.get('content_object')
-        content_object = content_object_model.objects.get(id=content_object_id)
-        message = content_object_model.objects.add_message(
+        content_object = get_messenger_object(
+            type_=kwargs.get("type"),
+            id_=kwargs.get('content_object')
+        )
+        message = content_object.__class__.objects.add_message(
             obj=content_object,
             text=kwargs.get("text"),
             account=kwargs.get("account"),
@@ -126,20 +127,23 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         )
 
 
-class GroupCreateSerializer(serializers.ModelSerializer):
-    account = serializers.HiddenField(default=serializers.CurrentUserDefault())
-    message = MessageCreateSerializer()
+class AccountIdSerializer(serializers.Serializer):
     account_id = serializers.CharField()
-    photo = serializers.CharField()
+
+
+class GroupCreateSerializer(serializers.ModelSerializer):
+    owner = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    accounts = AccountIdSerializer(required=False, default=[], many=True)
+    photo = serializers.CharField(required=False)
     is_public = serializers.BooleanField(default=True)
 
     class Meta:
         model = Group
-        fields = ("account_id", "message", "account", "photo", "is_public")
+        fields = ("owner", "accounts", "photo", "is_public", "title")
 
     def save(self, **kwargs):
         kwargs.update(self.validated_data)
-        kwargs.pop("account_id")
+        kwargs.pop("accounts")
         photo = kwargs.get("photo")
         if photo is not None:
             photo = ContentFile(photo.encode(), name=f"{str(uuid4())}.png")
@@ -147,23 +151,9 @@ class GroupCreateSerializer(serializers.ModelSerializer):
             members=kwargs['members'],
             title=kwargs['title'],
             photo=photo,
-            is_public=kwargs['is_public']
+            is_public=kwargs['is_public'],
+            owner=kwargs['owner']
         )
-        message = Group.objects.add_message(
-            obj=group,
-            account=kwargs['message']['account'],
-            text=kwargs['message']['text'],
-            source=kwargs['message'].get('source')
-        )
-        for media in kwargs['message'].get('medias'):
-            extension = media.get('extension')
-            name = f"{str(uuid4())}.{extension}" if extension is not None else f"{str(uuid4())}"
-            file = ContentFile(media['media'].encode(), name=name)
-            MessageMedia.objects.create(
-                message=message,
-                media=file,
-                extension=media.get('extension')
-            )
         return group
 
 

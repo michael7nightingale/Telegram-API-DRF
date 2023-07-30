@@ -1,6 +1,7 @@
 from django.contrib.auth.hashers import make_password
 from django.db import models
 from django.contrib.auth.models import AbstractUser, UserManager
+from rest_framework.exceptions import NotFound
 
 
 class AccountManager(UserManager):
@@ -44,13 +45,15 @@ class AccountManager(UserManager):
         user.save(using=self._db)
         return user
 
-    # def get(self, *args, **kwargs):
-    #     return (
-    #         super()
-    #         .prefetch_related("chats")
-    #         .get(*args, **kwargs)
-    #     )
-    #
+    def get(self, *args, **kwargs):
+        try:
+            return (
+                super()
+                .get(*args, **kwargs)
+            )
+        except self.model.DoesNotExist:
+            raise NotFound("Account is not found.")
+
     # def filter(self, **kwargs):
     #     return (
     #         super()
