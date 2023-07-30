@@ -1,6 +1,7 @@
 from urllib.parse import parse_qs
 from typing import Optional
 from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import PermissionDenied
 
 from users.models import Account
 from channels.db import database_sync_to_async
@@ -24,6 +25,8 @@ class TokenAuthMiddleware:
     async def __call__(self, scope, receive, send):
         query_string = scope['query_string'].decode()
         query_string_parse = parse_qs(query_string)
+        if "token" not in query_string_parse:
+            raise PermissionDenied("Authentication credentials are not provided.")
         token = query_string_parse['token'][0]
         user = await get_user_from_db(token)
         scope['user'] = user
