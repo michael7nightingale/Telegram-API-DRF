@@ -111,6 +111,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
                 )
                 await self.notify_users(chat, await self.get_serializer_data(last_message_serializer))
                 data = {"message": "chat created"}
+        print(data)
         await self.send_json(data)
 
     @database_sync_to_async

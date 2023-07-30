@@ -9,7 +9,7 @@ class ChatManager(models.Manager):
     def get(self, *args, **kwargs):
         return (
             super()
-            .prefetch_related("messages", "members", "messages__account")
+            .prefetch_related("messages", "members", "messages__account", "medias")
             .get(*args, **kwargs)
         )
 
@@ -32,6 +32,10 @@ class ChatManager(models.Manager):
         chat.save()
         chat.members.add(*members)
         return chat
+
+    def add_message_instance(self, chat, message):
+        chat.last_message = message
+        chat.save()
 
     def add_message(self, chat, text: str, account, source):
         if chat.members.filter(id=account.id).exists():
@@ -83,31 +87,6 @@ class Group(models.Model):
     objects = ChatManager()
 
 
-class MessageManager(models.Manager):
-    # def get(self, *args, **kwargs):
-    #     return (
-    #         super()
-    #         .select_related("account")
-    #         .get(*args, **kwargs)
-    #     )
-    #
-    # def filter(self, **kwargs):
-    #     return (
-    #         super()
-    #         .select_related("account")
-    #         .filter(**kwargs)
-    #     )
-    #
-    # def all(self):
-    #     return (
-    #         super()
-    #         .select_related("account")
-    #         .all()
-    #     )
-
-    pass
-
-
 class Message(models.Model):
     content_object = GenericForeignKey(ct_field="content_type", fk_field="id")
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -124,18 +103,19 @@ class Message(models.Model):
     time_send = models.DateTimeField("Time send", auto_created=True, auto_now=True)
     time_update = models.DateTimeField("Time update", null=True, auto_now_add=True)
 
-    objects = MessageManager()
+    objects = models.Manager()
 
     def __str__(self):
         return self.text
 
 
-def media_upload_to(odj):
+def media_upload_to(odj, *args, **kwargs):
     return f"uploads/{odj.id}"
 
 
 class MessageMedia(models.Model):
     media = models.FileField("Media", upload_to=media_upload_to)
-    message = models.ForeignKey("Message", on_delete=models.CASCADE)
+    message = models.ForeignKey("Message", on_delete=models.CASCADE, related_name="medias")
+    extension = models.CharField(max_length=20, null=True)
 
     objects = models.Manager()
