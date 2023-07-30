@@ -1,17 +1,22 @@
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 from django.db import models
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from rest_framework.exceptions import NotFound, PermissionDenied
+from django.conf import settings
 
 
-class ChatManager(models.Manager):
-    pass
-
+class MessengerManager(models.Manager):
     def get(self, *args, **kwargs):
-        return (
-            super()
-            .prefetch_related("messages", "members", "messages__account", "messages__medias")
-            .get(*args, **kwargs)
-        )
+        try:
+            obj = (
+                super()
+                .prefetch_related("messages", "members", "messages__account", "messages__medias")
+                .get(*args, **kwargs)
+            )
+            return obj
+        except Chat.DoesNotExist:
+            raise NotFound()
 
     def filter(self, **kwargs):
         return (
@@ -27,39 +32,35 @@ class ChatManager(models.Manager):
             .all()
         )
 
+    def add_message_instance(self, obj, message):
+        obj.last_message = message
+        obj.save()
+
+    def add_message(self, obj, text: str, account, source):
+        if obj.members.filter(id=account.id).exists():
+            message = Message(
+                content_object=obj,
+                text=text,
+                account=account,
+                source=source
+            )
+            message.save()
+            obj.last_message = message
+            obj.save()
+            return message
+        raise PermissionDenied()
+
+
+class ChatManager(MessengerManager):
+
     def create_chat(self, members: list):
         chat = Chat()
         chat.save()
         chat.members.add(*members)
         return chat
 
-    def add_message_instance(self, chat, message):
-        chat.last_message = message
-        chat.save()
-
-    def add_message(self, chat, text: str, account, source):
-        if chat.members.filter(id=account.id).exists():
-            message = Message(
-                content_object=chat,
-                text=text,
-                account=account,
-                source=source
-            )
-            message.save()
-            chat.last_message = message
-            chat.save()
-            return message
-        else:
-            return None
-
     def all_account_chats(self, account):
         return account.chats.all()
-
-    def all_accounts_chatting(self, account):
-        for ac in account.chats.all():
-            for member in ac.members.all():
-                if member != account:
-                    yield member
 
 
 class Chat(models.Model):
@@ -72,6 +73,28 @@ class Chat(models.Model):
     last_message = models.OneToOneField("Message", on_delete=models.SET_NULL, null=True, blank=True)
 
     objects = ChatManager()
+
+
+class GroupManager(MessengerManager):
+
+    def create_group(
+            self,
+            members: list,
+            title: str,
+            photo: ContentFile | None = None,
+            is_public: bool = True,
+    ):
+        group = Group(
+            title=title,
+            photo=photo,
+            is_public=is_public
+        )
+        group.save()
+        group.members.add(*members)
+        return group
+
+    def all_account_groups(self, account):
+        return account.groups.all()
 
 
 class Group(models.Model):
@@ -88,10 +111,16 @@ class Group(models.Model):
         on_delete=models.CASCADE,
         related_name="own_groups"
     )
-
+    photo = models.ImageField(null=True, upload_to="uploads/groups/")
     messages = GenericRelation("Message")
 
-    objects = ChatManager()
+    objects = GroupManager()
+
+    def get_photo_url(self):
+        if self.photo:
+            return self.photo.url
+        else:
+            return settings.MEDIA_URL + "uploads/groups/default.png"
 
 
 class Message(models.Model):
@@ -106,7 +135,6 @@ class Message(models.Model):
         blank=True
     )
     viewed = models.BooleanField(default=False)
-
     time_send = models.DateTimeField("Time send", auto_created=True, auto_now=True)
     time_update = models.DateTimeField("Time update", null=True, auto_now_add=True)
 
@@ -117,7 +145,7 @@ class Message(models.Model):
 
 
 def media_upload_to(odj, *args, **kwargs):
-    return f"uploads/{odj.id}"
+    return f"uploads/{odj.message.id}"
 
 
 class MessageMedia(models.Model):
@@ -136,5 +164,6 @@ message_types_models = {
 
 message_types_choices = (
     ('chat', "chat"),
-    ("group", "group")
+    ("group", "group"),
+
 )

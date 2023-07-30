@@ -132,7 +132,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
         )
         create_serializer.is_valid(raise_exception=True)
         content_object_model = message_types_models[create_serializer.validated_data.get('type')]
-        content_object = await content_object_model.objects.aget(
+        content_object = await sync_to_async(content_object_model.objects.get)(
             id=create_serializer.validated_data.get('content_object')
         )
         message = await self.save_serializer(create_serializer)
