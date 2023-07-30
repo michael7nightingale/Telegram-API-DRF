@@ -4,6 +4,7 @@ from django.db import models
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from rest_framework.exceptions import NotFound, PermissionDenied
 from django.conf import settings
+from typing import Union
 
 
 class MessengerManager(models.Manager):
@@ -50,6 +51,14 @@ class MessengerManager(models.Manager):
             return message
         raise PermissionDenied()
 
+    def all_account_in_account_chats(self, account):
+        members = []
+        for ac in account.chats.all():
+            for member in ac.members.all():
+                if member != account:
+                    members.append(member)
+        return members
+
 
 class ChatManager(MessengerManager):
 
@@ -81,13 +90,15 @@ class GroupManager(MessengerManager):
             self,
             members: list,
             title: str,
+            owner,
             photo: ContentFile | None = None,
             is_public: bool = True,
     ):
         group = Group(
             title=title,
             photo=photo,
-            is_public=is_public
+            is_public=is_public,
+            owner=owner
         )
         group.save()
         group.members.add(*members)
@@ -104,7 +115,7 @@ class Group(models.Model):
         related_name="group_chats",
     )
     is_public = models.BooleanField(default=True)
-    time_created = models.DateTimeField(auto_created=True)
+    time_created = models.DateTimeField(auto_created=True, auto_now=True)
     title = models.CharField(max_length=255)
     owner = models.ForeignKey(
         to="users.Account",
@@ -112,15 +123,14 @@ class Group(models.Model):
         related_name="own_groups"
     )
     photo = models.ImageField(null=True, upload_to="uploads/groups/")
-    messages = GenericRelation("Message")
+    messages = GenericRelation("Message", object_id_field="id")
 
     objects = GroupManager()
 
     def get_photo_url(self):
         if self.photo:
-            return self.photo.url
-        else:
-            return settings.MEDIA_URL + "uploads/groups/default.png"
+            return settings.MEDIA_URL + self.photo.url
+        return settings.MEDIA_URL + "uploads/groups/default.png"
 
 
 class Message(models.Model):
@@ -167,3 +177,14 @@ message_types_choices = (
     ("group", "group"),
 
 )
+
+
+Messenger = Union[Chat, Group]
+
+
+def get_messenger_object(type_: str, id_: str) -> Messenger:
+    content_object_model = message_types_models.get(type_)
+    if content_object_model is None:
+        raise ValueError
+    content_object = content_object_model.objects.get(id=id_)
+    return content_object
