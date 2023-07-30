@@ -9,7 +9,7 @@ class ChatManager(models.Manager):
     def get(self, *args, **kwargs):
         return (
             super()
-            .prefetch_related("messages", "members", "messages__account", "medias")
+            .prefetch_related("messages", "members", "messages__account", "messages__medias")
             .get(*args, **kwargs)
         )
 
@@ -48,18 +48,25 @@ class ChatManager(models.Manager):
             message.save()
             chat.last_message = message
             chat.save()
+            return message
         else:
             return None
 
     def all_account_chats(self, account):
         return account.chats.all()
 
+    def all_accounts_chatting(self, account):
+        for ac in account.chats.all():
+            for member in ac.members.all():
+                if member != account:
+                    yield member
+
 
 class Chat(models.Model):
     members = models.ManyToManyField(
         "users.Account",
         verbose_name="Members",
-        related_name="chats"
+        related_name="chats",
     )
     messages = GenericRelation("Message", object_id_field="id")
     last_message = models.OneToOneField("Message", on_delete=models.SET_NULL, null=True, blank=True)
@@ -71,7 +78,7 @@ class Group(models.Model):
     members = models.ManyToManyField(
         "users.Account",
         verbose_name="Members",
-        related_name="group_chats"
+        related_name="group_chats",
     )
     is_public = models.BooleanField(default=True)
     time_created = models.DateTimeField(auto_created=True)
@@ -119,3 +126,15 @@ class MessageMedia(models.Model):
     extension = models.CharField(max_length=20, null=True)
 
     objects = models.Manager()
+
+
+message_types_models = {
+    "chat": Chat,
+    "group": Group,
+
+}
+
+message_types_choices = (
+    ('chat', "chat"),
+    ("group", "group")
+)

@@ -1,10 +1,10 @@
-from uuid import uuid4
-
-from django.core.files import File
 from django.core.files.base import ContentFile
 from rest_framework import serializers
+from uuid import uuid4
+from rest_framework.exceptions import PermissionDenied
 
-from .models import Chat, Message, MessageMedia
+
+from .models import Chat, Message, MessageMedia, Group, message_types_models, message_types_choices
 from users.serializers import AccountDetailSerializer
 
 
@@ -17,12 +17,38 @@ class MessageMediaCreateSerializer(serializers.ModelSerializer):
 
 
 class MessageCreateSerializer(serializers.ModelSerializer):
+    type = serializers.ChoiceField(choices=message_types_choices)
     account = serializers.HiddenField(default=serializers.CurrentUserDefault())
     medias = MessageMediaCreateSerializer(many=True)
+    content_object = serializers.CharField()
 
     class Meta:
         model = Message
-        fields = ("text", "account", "content_object", "source", "medias")
+        fields = ("text", "account", "content_object", "source", "medias", "type")
+
+    def save(self, **kwargs):
+        kwargs.update(self.validated_data)
+        content_object_model = message_types_models[kwargs['type']]
+        content_object_id = kwargs.get('content_object')
+        content_object = content_object_model.objects.get(id=content_object_id)
+        message = content_object_model.objects.add_message(
+            content_object,
+            text=kwargs.get("text"),
+            account=kwargs.get("account"),
+            source=kwargs.get("source"),
+        )
+        if message is None:
+            raise PermissionDenied("You are not is the chat.")
+        for media in kwargs.get('medias', []):
+            extension = media.get('extension')
+            name = f"{str(uuid4())}.{extension}" if extension is not None else f"{str(uuid4())}"
+            file = ContentFile(media['media'].encode(), name=name)
+            MessageMedia.objects.create(
+                message=message,
+                media=file,
+                extension=media.get('extension')
+            )
+        return message
 
 
 class MessageDetailSerializer(serializers.ModelSerializer):
@@ -65,8 +91,8 @@ class ChatCreateSerializer(serializers.ModelSerializer):
         kwargs.update(self.validated_data)
         kwargs.pop("account_id")
         chat = self.Meta.model.objects.create_chat(kwargs['members'])
-        message = Message.objects.create(
-            content_object=chat,
+        message = Chat.objects.add_message(
+            chat=chat,
             account=kwargs['message']['account'],
             text=kwargs['message']['text'],
             source=kwargs['message'].get('source')
@@ -80,9 +106,6 @@ class ChatCreateSerializer(serializers.ModelSerializer):
                 media=file,
                 extension=media.get('extension')
             )
-
-        Chat.objects.add_message_instance(chat, message)
-
         return chat
 
 
