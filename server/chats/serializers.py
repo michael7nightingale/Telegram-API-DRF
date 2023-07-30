@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 from uuid import uuid4
@@ -60,6 +62,30 @@ class MessageDetailSerializer(serializers.ModelSerializer):
             "time_update",
 
         )
+
+
+class MessageUpdateSerializer(serializers.ModelSerializer):
+    id = serializers.CharField()
+    text = serializers.CharField(required=False)
+
+    class Meta:
+        model = Message
+        fields = (
+            "id",
+            "text",
+
+        )
+
+    def update(self, instance, **kwargs):
+        kwargs.update(self.validated_data)
+        kwargs.pop('id')
+        for key, value in kwargs.items():
+            setattr(instance, key, value)
+        instance.time_update = datetime.now()
+        print(instance.text, kwargs)
+        print(self.validated_data)
+        instance.save()
+        return instance
 
 
 class MessageListSerializer(serializers.ModelSerializer):
@@ -188,3 +214,32 @@ class GroupDetailSerializer(serializers.ModelSerializer):
             "time_created",
 
         )
+
+
+class GroupUpdateSerializer(serializers.ModelSerializer):
+    id = serializers.CharField()
+    photo = serializers.CharField(required=False)
+    is_public = serializers.BooleanField(required=False)
+    title = serializers.CharField(required=False, max_length=255)
+
+    class Meta:
+        model = Group
+        fields = (
+            "id",
+            "photo",
+            'is_public',
+            "title",
+
+        )
+
+    def update(self, instance, **kwargs):
+        kwargs.update(self.validated_data)
+        kwargs.pop('id')
+        photo = kwargs.get("photo")
+        if photo is not None:
+            photo = ContentFile(photo.encode(), name=f"{str(uuid4())}.png")
+        kwargs['photo'] = photo
+        for key, value in kwargs.items():
+            setattr(instance, key, value)
+        instance.save()
+        return instance
