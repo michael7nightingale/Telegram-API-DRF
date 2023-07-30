@@ -1,12 +1,11 @@
-import json
-
-import requests
 from websockets.sync.client import connect
+import requests
+import json
 
 
 def get_token():
     user_data = {
-        "phone_number": "+79999999999",
+        "phone_number": "89937740834",
         "password": "password"
     }
     response = requests.post(
@@ -28,9 +27,64 @@ url = "ws://localhost:8000/chats/"
 
 ws = connect(url + query_string)
 
-ws.send(json.dumps({"action": "list", "request_id": "123019380192831903"}))
 
-data = ws.recv()
-print(data)
-# data = ws.recv()
-# print(data)
+def get_chat_list():
+    data = {"action": "list", "request_id": "123019380192831903"}
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+def create_chat():
+    data = {
+        "action": "chat_create",
+        "request_id": "123019380192831903",
+        "account_id": "1",
+        "message": {
+            "text": "I am programming this",
+            "medias": [
+                {
+                    "media": open("manage.py").read()
+                }
+            ],
+            "type": "chat"
+        },
+    }
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+def send_chat_message():
+    data = {
+        "action": "send_message",
+        "request_id": "123019380192831903",
+        "text": "I am 123 this",
+        "medias": [
+            {
+                "media": open("manage.py").read()
+            }
+        ],
+        "type": "chat",
+        "content_object": "1"
+    }
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+def create_group():
+    data = {
+        "action": "group_create",
+        "request_id": "123019380192831903",
+        "title": "Programming",
+        "accounts": [
+            {"account_id": "1"}
+        ],
+    }
+    ws.send(json.dumps(data))
+    data = ws.recv()
+    print(data)
+
+
+create_group()
