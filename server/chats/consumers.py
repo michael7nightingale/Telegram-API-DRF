@@ -13,7 +13,7 @@ from .serializers import (
     GroupListSerializer, GroupCreateSerializer, GroupDetailSerializer,
     MessageDetailSerializer, MessageCreateSerializer,
 )
-from .models import Chat, Group, get_messenger_object
+from .models import Chat, get_messenger_object
 
 
 class RequestImitator:
