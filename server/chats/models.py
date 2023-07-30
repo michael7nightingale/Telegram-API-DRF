@@ -16,7 +16,7 @@ class MessengerManager(models.Manager):
                 .get(*args, **kwargs)
             )
             return obj
-        except Chat.DoesNotExist:
+        except self.model.DoesNotExist:
             raise NotFound()
 
     def filter(self, **kwargs):
@@ -86,6 +86,20 @@ class Chat(models.Model):
 
 class GroupManager(MessengerManager):
 
+    def get(self, *args, **kwargs):
+        try:
+            obj = (
+                super()
+                .prefetch_related(
+                    "messages", "members", "messages__account",
+                    "messages__medias", "owner",
+                )
+                .get(*args, **kwargs)
+            )
+            return obj
+        except self.model.DoesNotExist:
+            raise NotFound()
+
     def create_group(
             self,
             members: list,
@@ -133,6 +147,19 @@ class Group(models.Model):
         return settings.MEDIA_URL + "uploads/groups/default.png"
 
 
+class MessageManager(models.Manager):
+    def get(self, *args, **kwargs):
+        try:
+            obj = (
+                super()
+                .prefetch_related("account", "content_object")
+                .get(*args, **kwargs)
+            )
+            return obj
+        except self.model.DoesNotExist:
+            raise NotFound()
+
+
 class Message(models.Model):
     content_object = GenericForeignKey(ct_field="content_type", fk_field="id")
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -148,7 +175,7 @@ class Message(models.Model):
     time_send = models.DateTimeField("Time send", auto_created=True, auto_now=True)
     time_update = models.DateTimeField("Time update", null=True, auto_now_add=True)
 
-    objects = models.Manager()
+    objects = MessageManager()
 
     def __str__(self):
         return self.text
