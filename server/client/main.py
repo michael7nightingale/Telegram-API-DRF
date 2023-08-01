@@ -23,13 +23,13 @@ query_dict = {
 }
 
 query_string = "?" + "&".join(f"{k}={v}" for k, v in query_dict.items())
-url = "ws://localhost:8000/chats/"
+url = "ws://localhost:8000/chat/"
 
 ws = connect(url + query_string)
 
 
 def get_chat_list():
-    data = {"action": "list", "request_id": "123019380192831903"}
+    data = {"action": "chat_list", "request_id": "123019380192831903"}
     ws.send(json.dumps(data))
     data = ws.recv()
     print(data)
@@ -113,5 +113,5 @@ def update_group():
 
 if __name__ == "__main__":
     # create_group()
-    update_group()
+    get_chat_list()
     pass
