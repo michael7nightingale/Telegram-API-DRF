@@ -1,10 +1,8 @@
-from rest_framework.exceptions import PermissionDenied
-from channels.db import database_sync_to_async
-from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
-from djangochannelsrestframework.decorators import action
 from rest_framework.serializers import Serializer
-from djangochannelsrestframework.scope_utils import ensure_async
+from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 from djangochannelsrestframework.observer.generics import ObserverModelInstanceMixin
+from djangochannelsrestframework.decorators import action
+from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
 
 from users.models import Account
@@ -21,65 +19,34 @@ class RequestImitator:
         self.user = user
 
 
-class ChatConsumer(ObserverModelInstanceMixin,
-                   GenericAsyncAPIConsumer):
-    queryset = Chat.objects.all()
-    serializer_class = ChatListSerializer
+class MessengerGenericConsumerMixin:
+    @database_sync_to_async
+    def get_members(self, chat_or_group):
+        return [m for m in chat_or_group.members.all()]
 
-    actions = {
+
+class ChatConsumerMixin(MessengerGenericConsumerMixin,
+                        ObserverModelInstanceMixin,
+                        GenericAsyncAPIConsumer):
+    chat_actions = {
         "chat_create": ChatCreateSerializer,
         "chat_list": ChatListSerializer,
         "chat_detail": ChatDetailSerializer,
-        "group_create": GroupCreateSerializer,
-        "group_list": GroupListSerializer,
-        "group_detail": GroupDetailSerializer,
-        "group_update": GroupUpdateSerializer,
-        "send_message": MessageCreateSerializer,
-        "message_detail": MessageDetailSerializer,
-        "message_update": MessageUpdateSerializer,
 
     }
 
     @database_sync_to_async
-    def get_serializer(self, action_kwargs: dict | None = None, *args, **kwargs) -> Serializer:
+    def get_chat_serializer(self, action_kwargs: dict | None = None, *args, **kwargs) -> Serializer:
         action_ = action_kwargs.get("action")
-        if action_ not in self.actions:
+        if action_ not in self.chat_actions:
             raise AssertionError(f"Please define action {action_}")
-        serializer_class = self.actions[action_]
+        serializer_class = self.chat_actions[action_]
         return serializer_class(*args, **kwargs)
-
-    @database_sync_to_async
-    def get_serializer_data(self, serializer: Serializer) -> dict:
-        return serializer.data
-
-    @database_sync_to_async
-    def save_serializer(self, serializer: Serializer, **kwargs):
-        return serializer.save(**kwargs)
-
-    @database_sync_to_async
-    def update_serializer(self, serializer: Serializer, *args, **kwargs):
-        return serializer.update(*args, **kwargs)
-
-    async def websocket_connect(self, message):
-        try:
-            for permission in await self.get_permissions(action="connect"):
-                if not await ensure_async(permission.can_connect)(
-                        scope=self.scope, consumer=self, message=message
-                ):
-                    raise PermissionDenied()
-            self.account = self.scope['user']
-            if self.account is None:
-                return
-            await self.accept()
-            self.account_id = str(self.account.id)
-            await self.add_group(self.account_id)
-        except PermissionDenied:
-            await self.close()
 
     @action()
     async def chat_list(self, **kwargs):
         queryset = await sync_to_async(Chat.objects.all_account_chats)(self.account)
-        serializer = await self.get_serializer(action_kwargs=kwargs, instance=queryset, many=True)
+        serializer = await self.get_chat_serializer(action_kwargs=kwargs, instance=queryset, many=True)
         await self.send_json(
             content=await self.get_serializer_data(serializer)
         )
@@ -87,7 +54,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
     @action()
     async def chat_create(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
-        serializer = await self.get_serializer(
+        serializer = await self.get_chat_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
             context={"request": RequestImitator(self.account)}
@@ -112,10 +79,30 @@ class ChatConsumer(ObserverModelInstanceMixin,
                     data=await self.get_serializer_data(last_message_serializer)
                 )
 
+
+class GroupConsumerMixin(MessengerGenericConsumerMixin,
+                         ObserverModelInstanceMixin,
+                         GenericAsyncAPIConsumer):
+    group_actions = {
+        "group_create": GroupCreateSerializer,
+        "group_list": GroupListSerializer,
+        "group_detail": GroupDetailSerializer,
+        "group_update": GroupUpdateSerializer,
+
+    }
+
+    @database_sync_to_async
+    def get_group_serializer(self, action_kwargs: dict | None = None, *args, **kwargs) -> Serializer:
+        action_ = action_kwargs.get("action")
+        if action_ not in self.group_actions:
+            raise AssertionError(f"Please define action {action_}")
+        serializer_class = self.group_actions[action_]
+        return serializer_class(*args, **kwargs)
+
     @action()
     async def group_create(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
-        serializer = await self.get_serializer(
+        serializer = await self.get_group_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
             context={"request": RequestImitator(self.account)}
@@ -146,7 +133,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
     @action()
     async def group_update(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
-        serializer = await self.get_serializer(
+        serializer = await self.get_group_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
             context={"request": RequestImitator(self.account)}
@@ -166,10 +153,28 @@ class ChatConsumer(ObserverModelInstanceMixin,
             data=await self.get_serializer_data(group_detail_serializer)
         )
 
+
+class MessageConsumerMixin(ObserverModelInstanceMixin,
+                           GenericAsyncAPIConsumer):
+    message_actions = {
+        "send_message": MessageCreateSerializer,
+        "message_detail": MessageDetailSerializer,
+        "message_update": MessageUpdateSerializer,
+
+    }
+
+    @database_sync_to_async
+    def get_message_serializer(self, action_kwargs: dict | None = None, *args, **kwargs) -> Serializer:
+        action_ = action_kwargs.get("action")
+        if action_ not in self.message_actions:
+            raise AssertionError(f"Please define action {action_}")
+        serializer_class = self.message_actions[action_]
+        return serializer_class(*args, **kwargs)
+
     @action()
     async def message_update(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
-        serializer = await self.get_serializer(
+        serializer = await self.get_message_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
             context={"request": RequestImitator(self.account)}
@@ -180,7 +185,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
             await self.send_json({"detail": "You are not message sender."})
         else:
             message = await self.update_serializer(serializer, instance=message)
-            message_detail_serializer = await self.get_serializer(
+            message_detail_serializer = await self.get_message_serializer(
                 action_kwargs={
                     "request_id": action_kwargs['request_id'],
                     "action": "message_detail"
@@ -192,20 +197,10 @@ class ChatConsumer(ObserverModelInstanceMixin,
                 data=await self.get_serializer_data(message_detail_serializer)
             )
 
-    @classmethod
-    def prepare_data(cls, **kwargs) -> dict:
-        action_kwargs = {
-            "action": kwargs['action'],
-            "request_id": kwargs['request_id']
-        }
-        kwargs.pop('action')
-        kwargs.pop("request_id")
-        return action_kwargs
-
     @action()
     async def message_send(self, **kwargs):
         action_kwargs = self.prepare_data(**kwargs)
-        create_serializer = await self.get_serializer(
+        create_serializer = await self.get_message_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
             context={"request": RequestImitator(self.account)}
@@ -219,7 +214,7 @@ class ChatConsumer(ObserverModelInstanceMixin,
         if message is None:
             await self.send_json({"detail": "You are not is the chat."})
         else:
-            detail_serializer = await self.get_serializer(
+            detail_serializer = await self.get_message_serializer(
                 action_kwargs={
                     "request_id": action_kwargs['request_id'],
                     "action": "message_detail"
@@ -231,43 +226,3 @@ class ChatConsumer(ObserverModelInstanceMixin,
                 chat_or_group=content_object,
                 data=data
             )
-
-    @database_sync_to_async
-    def get_members(self, chat_or_group):
-        return [m for m in chat_or_group.members.all()]
-
-    @database_sync_to_async
-    def get_accounts_by_ids(self, ids: list):
-        accounts = [
-            account for account in
-            Account.objects.filter(id__in=ids)
-        ]
-        return accounts
-
-    async def notify_accounts_by_chat_or_group(self, chat_or_group, data):
-        members = await self.get_members(chat_or_group)
-        for member in members:
-            await self.channel_layer.group_send(
-                str(member.id),
-                {
-                    "type": "update_messages",
-                    "message": data
-                }
-            )
-
-    async def notify_accounts_by_list(self, accounts: list, data: dict):
-        for account in accounts:
-            await self.channel_layer.group_send(
-                str(account.id),
-                {
-                    "type": "update_messages",
-                    "message": data
-                }
-            )
-
-    async def update_messages(self, event):
-        await self.send_json(event['message'])
-
-    async def websocket_disconnect(self, message):
-        await self.remove_group(self.account_id)
-        await self.close()
