@@ -14,11 +14,6 @@ from .serializers import (
 from .models import Chat, get_messenger_object, Group, Message
 
 
-class RequestImitator:
-    def __init__(self, user):
-        self.user = user
-
-
 class MessengerGenericConsumerMixin:
     @database_sync_to_async
     def get_members(self, chat_or_group):
@@ -57,7 +52,7 @@ class ChatConsumerMixin(MessengerGenericConsumerMixin,
         serializer = await self.get_chat_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
-            context={"request": RequestImitator(self.account)}
+            context={"request": await self.imitate_request(user=self.account)}
         )
         serializer.is_valid(raise_exception=True)
         account_id = serializer.validated_data.get('account_id')
@@ -105,7 +100,7 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
         serializer = await self.get_group_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
-            context={"request": RequestImitator(self.account)}
+            context={"request": await self.imitate_request(user=self.account)}
         )
         serializer.is_valid(raise_exception=True)
         accounts_ids = [i['account_id'] for i in serializer.validated_data.get('accounts')]
@@ -136,7 +131,7 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
         serializer = await self.get_group_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
-            context={"request": RequestImitator(self.account)}
+            context={"request": await self.imitate_request(user=self.account)}
         )
         serializer.is_valid(raise_exception=True)
         group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('id'))
@@ -177,7 +172,7 @@ class MessageConsumerMixin(ObserverModelInstanceMixin,
         serializer = await self.get_message_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
-            context={"request": RequestImitator(self.account)}
+            context={"request": await self.imitate_request(user=self.account)}
         )
         serializer.is_valid(raise_exception=True)
         message = await sync_to_async(Message.objects.get)(id=serializer.validated_data.get('id'))
@@ -203,7 +198,7 @@ class MessageConsumerMixin(ObserverModelInstanceMixin,
         create_serializer = await self.get_message_serializer(
             action_kwargs=action_kwargs,
             data=kwargs,
-            context={"request": RequestImitator(self.account)}
+            context={"request": await self.imitate_request(user=self.account)}
         )
         create_serializer.is_valid(raise_exception=True)
         content_object = await sync_to_async(get_messenger_object)(

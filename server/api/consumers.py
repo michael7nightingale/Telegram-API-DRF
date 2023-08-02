@@ -6,13 +6,20 @@ from djangochannelsrestframework.scope_utils import ensure_async
 from channels.db import database_sync_to_async
 
 from chats.consumers import ChatConsumerMixin, GroupConsumerMixin, MessageConsumerMixin
+from reactions.consumers import ReactionConsumerMixin
 from users.models import Account
+
+
+class RequestImitator:
+    def __init__(self, user):
+        self.user = user
 
 
 class ChatConsumer(
     ChatConsumerMixin,
     GroupConsumerMixin,
     MessageConsumerMixin,
+    ReactionConsumerMixin,
     ObserverModelInstanceMixin,
     GenericAsyncAPIConsumer
 ):
@@ -86,6 +93,10 @@ class ChatConsumer(
                     "message": data
                 }
             )
+
+    @staticmethod
+    async def imitate_request(*args, **kwargs):
+        return RequestImitator(*args, **kwargs)
 
     async def update_messages(self, event):
         await self.send_json(event['message'])
