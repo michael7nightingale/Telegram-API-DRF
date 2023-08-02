@@ -159,6 +159,10 @@ class MessageManager(models.Manager):
         except self.model.DoesNotExist:
             raise NotFound()
 
+    def check_member_permissions(self, obj, account):
+        if account not in obj.members.all():
+            raise PermissionDenied("Account is not the member of the chat or group.")
+
 
 class Message(models.Model):
     content_object = GenericForeignKey(ct_field="content_type", fk_field="id")
