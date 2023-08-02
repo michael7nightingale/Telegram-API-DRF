@@ -17,7 +17,7 @@ from .serializers import (
 
 
 class ReactionConsumerMixin(ObserverModelInstanceMixin,
-                           GenericAsyncAPIConsumer):
+                            GenericAsyncAPIConsumer):
     reactions_actions = {
         "reaction_create": ReactionCreateSerializer,
         "reaction_list": ReactionListSerializer,
