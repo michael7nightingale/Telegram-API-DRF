@@ -4,6 +4,9 @@ from django.core.files.base import ContentFile
 from rest_framework import serializers
 from uuid import uuid4
 
+from rest_framework.exceptions import PermissionDenied
+
+from users.models import Account
 from .models import Chat, Message, MessageMedia, Group, get_messenger_object, message_types_choices
 from users.serializers import AccountDetailSerializer
 
@@ -32,6 +35,13 @@ class MessageCreateSerializer(serializers.ModelSerializer):
             type_=kwargs.get("type"),
             id_=kwargs.get('content_object')
         )
+        if isinstance(content_object, Chat):
+            for member in content_object.members.all():
+                if member != kwargs['account']:
+                    if not Account.objects.is_blocked_by_you(kwargs['account'], member):
+                        raise PermissionDenied("You blocked this user")
+                    elif not Account.objects.are_you_blocked(kwargs['account'], member):
+                        raise PermissionDenied("User blocked you.")
         message = content_object.__class__.objects.add_message(
             obj=content_object,
             text=kwargs.get("text"),
@@ -243,3 +253,18 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
             setattr(instance, key, value)
         instance.save()
         return instance
+
+
+class GroupJoinSerializer(serializers.Serializer):
+    group_id = serializers.CharField()
+    account = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+
+class GroupLeaveSerializer(serializers.Serializer):
+    group_id = serializers.CharField()
+    account = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+
+class GroupInviteSerializer(serializers.Serializer):
+    group_id = serializers.CharField()
+    account_id = serializers.CharField()

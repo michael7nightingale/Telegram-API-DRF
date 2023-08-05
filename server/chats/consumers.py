@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.serializers import Serializer
 from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 from djangochannelsrestframework.observer.generics import ObserverModelInstanceMixin
@@ -6,10 +7,13 @@ from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
 
 from users.models import Account
+from users.serializers import AccountDetailSerializer
+from .permissions import check_is_group_owner, check_is_group_public
 from .serializers import (
     ChatListSerializer, ChatCreateSerializer, ChatDetailSerializer,
     GroupListSerializer, GroupCreateSerializer, GroupDetailSerializer, GroupUpdateSerializer,
-    MessageDetailSerializer, MessageCreateSerializer, MessageUpdateSerializer
+    MessageDetailSerializer, MessageCreateSerializer, MessageUpdateSerializer, GroupJoinSerializer,
+    GroupLeaveSerializer, GroupInviteSerializer
 )
 from .models import Chat, get_messenger_object, Group, Message
 
@@ -42,8 +46,10 @@ class ChatConsumerMixin(MessengerGenericConsumerMixin,
     async def chat_list(self, **kwargs):
         queryset = await sync_to_async(Chat.objects.all_account_chats)(self.account)
         serializer = await self.get_chat_serializer(action_kwargs=kwargs, instance=queryset, many=True)
+        data = await self.get_serializer_data(serializer)
+        data.update(action=kwargs['action'])
         await self.send_json(
-            content=await self.get_serializer_data(serializer)
+            content=data
         )
 
     @action()
@@ -60,6 +66,10 @@ class ChatConsumerMixin(MessengerGenericConsumerMixin,
             await self.send_json({"detail": "Other user required"})
         else:
             account = await sync_to_async(Account.objects.get)(pk=account_id)
+            if not Account.objects.is_blocked_by_you(kwargs['account'], account):
+                raise PermissionDenied("You blocked this user")
+            elif not Account.objects.are_you_blocked(kwargs['account'], account):
+                raise PermissionDenied("User blocked you.")
             if account in await self.all_accounts_chatting(self.account):
                 await self.send_json({"detail": "Chat already exists."})
             else:
@@ -69,9 +79,11 @@ class ChatConsumerMixin(MessengerGenericConsumerMixin,
                     action_kwargs={"action": "message_detail"},
                     instance=chat.last_message
                 )
+                data = await self.get_serializer_data(last_message_serializer)
+                data.update(action=action_kwargs['action'])
                 await self.notify_accounts_by_list(
                     accounts=accounts,
-                    data=await self.get_serializer_data(last_message_serializer)
+                    data=data
                 )
 
 
@@ -83,6 +95,9 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
         "group_list": GroupListSerializer,
         "group_detail": GroupDetailSerializer,
         "group_update": GroupUpdateSerializer,
+        "group_join": GroupJoinSerializer,
+        "group_leave": GroupLeaveSerializer,
+        "group_invite": GroupInviteSerializer,
 
     }
 
@@ -120,9 +135,11 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
                 },
                 instance=group
             )
+            data = await self.get_serializer_data(group_detail_serializer)
+            data.update(action=action_kwargs['action'])
             await self.notify_accounts_by_list(
                 accounts=accounts,
-                data=await self.get_serializer_data(group_detail_serializer)
+                data=data
             )
 
     @action()
@@ -135,6 +152,7 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
         )
         serializer.is_valid(raise_exception=True)
         group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('id'))
+        check_is_group_owner(self.account, group)
         group = await self.update_serializer(serializer, instance=group)
         group_detail_serializer = await self.get_serializer(
             action_kwargs={
@@ -143,9 +161,69 @@ class GroupConsumerMixin(MessengerGenericConsumerMixin,
             },
             instance=group
         )
+        data = await self.get_serializer_data(group_detail_serializer)
+        data.update(action=action_kwargs['action'])
         await self.notify_accounts_by_chat_or_group(
             chat_or_group=group,
-            data=await self.get_serializer_data(group_detail_serializer)
+            data=data,
+            context={"request": await self.imitate_request(user=self.account)}
+        )
+
+    @action()
+    async def group_join(self, **kwargs):
+        action_kwargs = self.prepare_data(**kwargs)
+        serializer = await self.get_group_serializer(
+            action_kwargs=action_kwargs,
+            data=kwargs,
+        )
+        serializer.is_valid(raise_exception=True)
+        group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('id'))
+        check_is_group_public(group)
+        if self.account in await self.get_members(group):
+            raise PermissionDenied("Group")
+        data = await self.get_serializer_data(serializer)
+        data.update(action=action_kwargs['action'])
+        await self.notify_accounts_by_chat_or_group(
+            chat_or_group=group,
+            data=data
+        )
+
+    @action()
+    async def group_leave(self, **kwargs):
+        action_kwargs = self.prepare_data(**kwargs)
+        serializer = await self.get_group_serializer(
+            action_kwargs=action_kwargs,
+            data=kwargs,
+        )
+        serializer.is_valid(raise_exception=True)
+        group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('group_id'))
+        if self.account not in await self.get_members(group):
+            raise PermissionDenied("You are not in the group.")
+        data = await self.get_serializer_data(serializer)
+        data.update(action=action_kwargs['action'])
+        await self.notify_accounts_by_chat_or_group(
+            chat_or_group=group,
+            data=data
+        )
+
+    @action()
+    async def group_invite(self, **kwargs):
+        action_kwargs = self.prepare_data(**kwargs)
+        serializer = await self.get_group_serializer(
+            action_kwargs=action_kwargs,
+            data=kwargs,
+        )
+        serializer.is_valid(raise_exception=True)
+        group = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('account_id'))
+        check_is_group_owner(self.account, group)
+        account = await sync_to_async(Group.objects.get)(id=serializer.validated_data.get('group_id'))
+        if account in await self.get_members(group):
+            raise PermissionDenied("Account is already in the group.")
+        data = await self.get_serializer_data(serializer)
+        data.update(action=action_kwargs['action'])
+        await self.notify_accounts_by_chat_or_group(
+            chat_or_group=group,
+            data=data
         )
 
 
@@ -187,9 +265,11 @@ class MessageConsumerMixin(ObserverModelInstanceMixin,
                 },
                 instance=message
             )
+            data = await self.get_serializer_data(message_detail_serializer)
+            data.update(action=action_kwargs['action'])
             await self.notify_accounts_by_chat_or_group(
                 chat_or_group=message.content_object,
-                data=await self.get_serializer_data(message_detail_serializer)
+                data=data
             )
 
     @action()
@@ -217,6 +297,7 @@ class MessageConsumerMixin(ObserverModelInstanceMixin,
                 instance=message
             )
             data = await self.get_serializer_data(detail_serializer)
+            data.update(action=action_kwargs['action'])
             await self.notify_accounts_by_chat_or_group(
                 chat_or_group=content_object,
                 data=data
