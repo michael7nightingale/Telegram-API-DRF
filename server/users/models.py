@@ -54,6 +54,12 @@ class AccountManager(UserManager):
         except self.model.DoesNotExist:
             raise NotFound("Account is not found.")
 
+    def are_you_blocked(self, you, other) -> bool:
+        return other.black_list.filter(id=you.id).exists()
+
+    def is_blocked_by_you(self, you, other) -> bool:
+        return you.black_list.filter(id=other.id).exists()
+
     # def filter(self, **kwargs):
     #     return (
     #         super()
@@ -75,6 +81,7 @@ class Account(AbstractUser):
     first_name = models.CharField("First name", max_length=100)
     last_name = models.CharField("Last name", max_length=100)
     phone_number = models.CharField("Phone number", max_length=20, unique=True)
+    black_list = models.ManyToManyField("self")
 
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = ["username", "first_name", "last_name"]
