@@ -7,7 +7,6 @@ from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
 
 from users.models import Account
-from users.serializers import AccountDetailSerializer
 from .permissions import check_is_group_owner, check_is_group_public
 from .serializers import (
     ChatListSerializer, ChatCreateSerializer, ChatDetailSerializer,

@@ -20,4 +20,3 @@ def check_is_group_owner(account, group):
 def check_is_group_public(group):
     if not group.is_public:
         raise PermissionDenied("Group is not private.")
-
