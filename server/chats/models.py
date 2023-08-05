@@ -49,6 +49,7 @@ class MessengerManager(models.Manager):
             obj.last_message = message
             obj.save()
             return message
+
         raise PermissionDenied()
 
     def all_account_in_account_chats(self, account):
